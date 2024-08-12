@@ -1,8 +1,8 @@
 # Rule Evaluator
-
 Lightweight Python-based nested rule evaluator. 
 
 ## Installation:
+
 ```
 pip install rule_evaluator
 ```
@@ -18,7 +18,6 @@ import rule_evaluator as rl
 ```python
 import rule_evaluator as rl
 from collections import OrderedDict
-
 
 # Define the rules
 rules = [

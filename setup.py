@@ -30,6 +30,8 @@ setup(
     version=version,
     description='Lightweight Python-based nested rule evaluator',
     long_description=long_description,
+    long_description_content_type='text/markdown',  # Specify Markdown
+
 
     # The project's main homepage.
     url='https://github.com/jolespin/rule_evaluator',
