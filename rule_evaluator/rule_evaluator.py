@@ -1,39 +1,21 @@
 import re
 from collections import OrderedDict
+from typing import List, Protocol
+from dataclasses import dataclass
+from parsimonious.grammar import Grammar
+from parsimonious.nodes import NodeVisitor
 
-def preprocess_rule(rule: str) -> str:
+# Format header for printing
+def format_header(text, line_character="=", n=None):
+    if n is None:
+        n = len(text)
+    line = n*line_character
+    return "{}\n{}\n{}".format(line, text, line)
+
+# Split rules into
+def split_rule(rule: str, split_characters: set = {"+","-",",","(",")", " "}) -> set:
     """
-    Preprocess the rule to convert space-separated tokens inside nested parentheses
-    into 'AND' expressions.
-
-    Args:
-        rule (str): The rule to preprocess.
-
-    Returns:
-        str: The preprocessed rule.
-    """
-    # Use a stack to handle nested parentheses
-    stack = []
-    current = ""
-    
-    for char in rule:
-        if char == '(':
-            # Push the current string onto the stack and start a new string
-            stack.append(current)
-            current = ""
-        elif char == ')':
-            # Replace spaces within the current string with " and "
-            current = current.replace(' ', ' and ')
-            # Pop the last string from the stack and append the modified current string
-            current = stack.pop() + f"({current})"
-        else:
-            current += char
-    
-    return current
-
-def rule_splitter(rule: str, split_characters: set = {"+","-",",","(",")", " "}) -> set:
-    """
-    Split rule by characters.
+    Split rule by tokens.
 
     Args:
         rule (str): Boolean logical string.
@@ -53,55 +35,7 @@ def rule_splitter(rule: str, split_characters: set = {"+","-",",","(",")", " "})
     unique_tokens = set(filter(bool, rule_decomposed.split()))
     return unique_tokens
 
-def evaluate_rule(rule: str, tokens: set, replace={"+": " and ", ",": " or "}) -> bool:
-    """
-    Evaluate a string of boolean logicals.
-
-    Args:
-        rule (str): Boolean logical string.
-        tokens (set): List of tokens in rule.
-        replace (dict, optional): Replace boolean characters. Defaults to {"+":" and ", "," : " or "}.
-
-    Returns:
-        bool: Evaluated rule.
-    """
-    # Preprocess the rule to handle nested rules with spaces
-    rule = preprocess_rule(rule)
-
-    # Handle optional tokens prefixed by '-'
-    rule = re.sub(r'-\w+', '', rule)
-
-    # Replace characters for standard logical formatting
-    for character_before, character_after in replace.items():
-        rule = rule.replace(character_before, character_after)
-
-    # Create a dictionary with the presence of each symbol in the tokens
-    token_to_bool = {sym: (sym in tokens) for sym in re.findall(r'\w+', rule)}
-
-    # Parse and evaluate the rule using a recursive descent parser
-    def parse_expression(expression: str) -> bool:
-        expression = expression.strip()
-        
-        # Handle nested expressions
-        if expression.startswith('(') and expression.endswith(')'):
-            return parse_expression(expression[1:-1])
-        
-        # Evaluate 'OR' conditions
-        if ' or ' in expression:
-            parts = expression.split(' or ')
-            return any(parse_expression(part) for part in parts)
-        
-        # Evaluate 'AND' conditions
-        elif ' and ' in expression:
-            parts = expression.split(' and ')
-            return all(parse_expression(part) for part in parts)
-        
-        # Evaluate individual token presence
-        else:
-            return token_to_bool.get(expression.strip(), False)
-
-    return parse_expression(rule)
-
+# Find rules in a definition
 def find_rules(definition: str) -> list:
     """
     Find and extract rules from the definition string.
@@ -146,74 +80,249 @@ def find_rules(definition: str) -> list:
     return rules
 
 
-def evaluate_definition(definition: str, tokens: set, replace={"+": " and ", ",": " or "}) -> dict:
-    """
-    Evaluate a complex definition string involving multiple rules.
 
-    Args:
-        definition (str): Complex boolean logical string with multiple rules.
-        tokens (set): Set of tokens to check against the rules.
-        replace (dict, optional): Replace boolean characters. Defaults to {"+":" and ", "," : " or "}.
+# ________________________________________________________________________
 
-    Returns:
-        dict: Dictionary with each rule and its evaluated result.
-    """
-    # Extract individual rules from the definition
-    rules = find_rules(definition)
+# ==============
+# Grammar Parser
+# ==============
+# The following code and descriptions is sourced (with light modifications) from @flakes (https://stackoverflow.com/users/3280538/flakes): 
+#     https://stackoverflow.com/a/78837254/678572
+
+
+# Defining the grammar
+# -------------------
+# Given the rules, you've defined a few operators with different precedence.
+
+# Break all values by the or operator ","
+# Break all top level items by the rules " "
+# Break all values by the and operator "+" or ignore operator "-"
+# "+" and "-" have the same precedence
+# Values may be defined in braces "(...)"
+# These are to be recursively parsed by referencing the root definition.
+# Given these rules, here's how you can define a grammar.
+DEFAULT_RULE_GRAMMAR="""
+    maybe_or = (maybe_rule or+) / maybe_rule
+    or = "," maybe_rule
     
-    # Evaluate each rule
-    rule_results = OrderedDict()
-    for rule in rules:
-        try:
-            cleaned_rule = rule[1:-1] if rule.startswith('(') and rule.endswith(')') else rule  # Remove outer parentheses if they exist
-            result = evaluate_rule(cleaned_rule, tokens, replace)
-        except SyntaxError:
-            # Handle syntax errors from eval() due to incorrect formatting
-            result = False
-        rule_results[rule] = result
+    maybe_rule = (maybe_and rule+) / maybe_and
+    rule = " " maybe_and
     
-    return rule_results
+    maybe_and = (expression and+) / expression
+    and = and_op expression
+    and_op = "+" / "-"
+    
+    expression = brace_expression / variable
+    brace_expression = "(" maybe_or ")"
+    
+    variable = ~r"[A-Z0-9]+"
+"""
+grammar = Grammar(DEFAULT_RULE_GRAMMAR)
 
 
+# Defining containers
+# -------------------
+# Now that we have a grammar, we can construct containers to represent its hierarchy. We'll want to be able to test against 
+# the items set by evaluating each container against its children.
+# At this point we can consider which of the operators need to be defined by separate containers. 
+# The and-operation "+" and rules operator " " have the same boolean evaluation, so we can combine them to a single And class. 
+# Other containers would be Or, Ignored and Var to represent the bool var codename.
+# We'll also benefit from a str repr to see whats going on in the case of errors, which we can use to dump out a normalized version of the expression.
+
+class Matcher(Protocol):
+    def matches(self, variables: List[str]) -> bool:
+        pass
+
+@dataclass
+class Var:
+    value: str
+
+    def __str__(self):
+        return self.value
+
+    def matches(self, variables: List[str]) -> bool:
+        return self.value in variables
+
+@dataclass
+class Ignored:
+    value: Matcher
+
+    def __str__(self):
+        return f"{self.value}?"
+
+    def matches(self, variables: List[str]) -> bool:
+        return True
+
+@dataclass
+class And:
+    values: List[Matcher]
+
+    def __str__(self):
+        return "(" + "+".join(map(str, self.values))  + ")"
+
+    def matches(self, variables: List[str]) -> bool:
+        return all(v.matches(variables) for v in self.values)
+
+@dataclass
+class Or:
+    values: List[Matcher]
+
+    def __str__(self):
+        return "(" + ",".join(map(str, self.values)) + ")"
+
+    def matches(self, variables: List[str]) -> bool:
+        return any(v.matches(variables) for v in self.values)
+
+# Parsing the grammar
+# -------------------
+# With a grammar and a set of containers we can now begin to unpack the statement. 
+# We can use the NodeVistor class from parsimonious for this. Each definition in the grammar 
+# can be given its own handler method to use while unpacking values.
+
+class Visitor(NodeVisitor):
+    def visit_maybe_rule(self, node, visited_children):
+        # If there are multiple rules, combine them.
+
+        children, *_ = visited_children
+        if isinstance(children, list):
+            return And([children[0], *children[1]])
+        return children
+
+    def visit_rule(self, node, visited_children):
+        # Strip out the " " rule operator child token
+
+        return visited_children[1]
+
+    def visit_maybe_or(self, node, visited_children):
+        # If there are multiple or values, combine them.
+
+        children, *_ = visited_children
+        if isinstance(children, list):
+            return Or([children[0], *children[1]])
+        return children
+
+    def visit_or(self, node, visited_children):
+        # Strip out the "," or operator child token
+
+        return visited_children[1]
+
+    def visit_maybe_and(self, node, visited_children):
+        # If there are multiple and values, combine them.
+
+        children, *_ = visited_children
+        if isinstance(children, list):
+            return And([children[0], *children[1]])
+        return children
+
+    def visit_and(self, node, visited_children):
+        # Strip out the operator child token, and
+        # handle the case where we ignore values.
+
+        if visited_children[0] == "-":
+            return Ignored(visited_children[1])
+        return visited_children[1]
+
+    def visit_and_op(self, node, visited_children):
+        # get the text of the operator.
+
+        return node.text
+
+    def visit_expression(self, node, visited_children):
+        # expressions only have one item
+
+        return visited_children[0]
+
+    def visit_brace_expression(self, node, visited_children):
+        # Strip out the "(" opening and ")" closing braces
+
+        return visited_children[1]
+
+    def visit_variable(self, node, visited_children):
+        # Parse the variable name
+
+        return Var(node.text)
+
+    def generic_visit(self, node, visited_children):
+        # Catchall response.
+
+        return visited_children or node
+    
+# Usage:
+# grammar = Grammar(DEFAULT_RULE_GRAMMAR)
+# for rule in definitions:
+#     tree = grammar.parse(rule)
+#     val = Visitor().visit(tree)
+#     print(f"Test: {rule}")
+#     print(f"Parsed as: {val}")
+#     print(f"Result: {val.matches(items)}")
+#     print()
+# ________________________________________________________________________
+
+# Classes
 class Rule(object):
     def __init__(
         self,
         rule:str,
         name:str=None,
-        replace:dict={"+": " and ", ",": " or "},
-        split_characters: set = {"+","-",",","(",")", " "}
+        split_characters: set = {"+","-",",","(",")", " "},
+        rule_grammar:str=DEFAULT_RULE_GRAMMAR,
     ):
-        self.rule = rule
-        self.replace = {} if replace is None else replace
+        if not isinstance(rule, str):
+            raise ValueError("rule must be string")
+        self.rule = str(rule)
         self.name = name
-        self.tokens = rule_splitter(rule, split_characters)
+        self.tokens = split_rule(rule, split_characters)
+        self.number_of_tokens = len(self.tokens)
+        self.grammar = Grammar(DEFAULT_RULE_GRAMMAR)
+        self.tree = self.grammar.parse(rule)
+        self.tree_walker = Visitor().visit(self.tree)
 
     def get_tokens(self):
         return self.tokens
     
     def evaluate(self, tokens:set) -> bool:
-        return evaluate_rule(self.rule, tokens, self.replace)
+        return self.tree_walker.matches(tokens)
 
     def __repr__(self):
-        return f"Rule[{self.name}]({self.rule})" if self.name else f"Rule({self.rule})"
+        name_text = "{}(name:{})".format(self.__class__.__name__, self.name)
+        rule_text = "{}".format(self.rule)
+        n = max(len(name_text), len(rule_text))
+        pad = 4
+        fields = [
+            format_header(name_text,line_character="=", n=n),
+            *format_header(rule_text, line_character="_", n=n).split("\n")[1:],
+            "Properties:",
+            pad*" " + "- number_of_tokens: {}".format(self.number_of_tokens),
+        ]
+        return "\n".join(fields)
+    
+    
     
 class Definition(object):
     def __init__(
         self,
         definition:str,
         name:str=None,
-        replace:dict={"+": " and ", ",": " or "},
-        split_characters: set = {"+","-",",","(",")", " "}
+        split_characters: set = {"+","-",",","(",")", " "},
+        rule_grammar:str=DEFAULT_RULE_GRAMMAR,
     ):
-        self.definition = definition
-        self.replace = {} if replace is None else replace
+        if not isinstance(definition, str):
+            raise ValueError("definition must be string")
+        self.definition = str(definition)
         self.split_characters = split_characters
         self.name = name
-        self.tokens = rule_splitter(definition, split_characters) #set.union(*map(lambda rule: rule_splitter(rule, self.replace.keys()), find_rules(definition)))
-        self.rules = list(map(lambda rule: Rule(rule=rule, replace=replace), find_rules(definition)))
+        self.tokens = split_rule(definition, split_characters) #set.union(*map(lambda rule: split_rule(rule, self.replace.keys()), find_rules(definition)))
+        self.number_of_tokens = len(self.tokens)
+        self.rules = list()
+        for i,rule in enumerate(find_rules(definition)):
+            rule = Rule(rule=rule, name=i, split_characters=split_characters, rule_grammar=rule_grammar)
+            self.rules.append(rule)
+        self.number_of_rules = len(self.rules)
         
     def evaluate(self, tokens:set, score:bool=False) -> dict:
-        rule_to_bool = evaluate_definition(self.definition, tokens=tokens, replace=self.replace)
+        rule_to_bool = dict() #evaluate_definition(self.definition, tokens=tokens, replace=self.replace)
+        for rule in self.rules:
+            rule_to_bool[rule.rule] = rule.evaluate(tokens)
         if score:
             values = rule_to_bool.values()
             return sum(values)/len(values)
@@ -227,4 +336,17 @@ class Definition(object):
         return self.rules
 
     def __repr__(self):
-        return f"Definition[{self.name}]({self.definition})" if self.name else f"Definition({self.definition})"
+        name_text = "{}(name:{})".format(self.__class__.__name__, self.name)
+        n = len(name_text)
+        pad = 4
+        fields = [
+            format_header(name_text,line_character="=", n=n),        
+            "Properties:",
+            pad*" " + "- number_of_tokens: {}".format(self.number_of_tokens),
+            pad*" " + "- number_of_rules: {}".format(self.number_of_rules),
+            "Rules:",
+            ]
+        for rule in self.rules:
+            rule_text = pad*" " + "- {}: {}".format(rule.name, rule.rule)
+            fields.append(rule_text)
+        return "\n".join(fields)

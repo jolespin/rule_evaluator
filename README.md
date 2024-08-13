@@ -122,6 +122,34 @@ tokens = {
 
 # Define
 d = rl.Definition(definition, name=name)
+
+# View Defintion
+d
+# =====================
+# Definition(name:M00357)
+# =====================
+# Properties:
+#     - number_of_tokens: 30
+#     - number_of_rules: 5
+# Rules:
+#     - 0: ((K00925 K00625),K01895)
+#     - 1: (K00193+K00197+K00194)
+#     - 2: (K00577+K00578+K00579+K00580+K00581-K00582-K00583+K00584)
+#     - 3: (K00399+K00401+K00402)
+#     - 4: (K22480+K22481+K22482,K03388+K03389+K03390,K08264+K08265,K03388+K03389+K03390+K14127+(K14126+K14128,K22516+K00125))
+
+# View Rule
+d.rules[2]
+# =========================================================
+# Rule(name:2)
+# =========================================================
+# (K00577+K00578+K00579+K00580+K00581-K00582-K00583+K00584)
+# _________________________________________________________
+# Properties:
+#     - number_of_tokens: 8
+
+
+# Evaluate
 d.evaluate(tokens)
 # OrderedDict([('((K00925 K00625),K01895)', False),
 #              ('(K00193+K00197+K00194)', True),
@@ -131,7 +159,10 @@ d.evaluate(tokens)
 #              ('(K22480+K22481+K22482,K03388+K03389+K03390,K08264+K08265,K03388+K03389+K03390+K14127+(K14126+K14128,K22516+K00125))',
 #               False)])
 
-# Evaluate
+# Score
 d.evaluate(tokens, score=True)
 # 0.6 
 ```
+
+# Acknowledgements:
+This package would not be possible without the grammar parsing help of [@flakes](https://stackoverflow.com/users/3280538/flakes).
