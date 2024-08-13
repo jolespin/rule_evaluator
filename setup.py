@@ -1,7 +1,7 @@
 import os
 from setuptools import setup, find_packages
 
-script_directory = os.path.absos.path(os.path.dirname(__file__))
+script_directory = os.path.abspath(os.path.dirname(__file__))
 
 package_name = "rule_evaluator"
 version = None

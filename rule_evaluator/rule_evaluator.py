@@ -264,6 +264,7 @@ class Rule(object):
         self,
         rule:str,
         name:str=None,
+        token_type:str=None,
         split_characters: set = {"+","-",",","(",")", " "},
         rule_grammar:str=DEFAULT_RULE_GRAMMAR,
     ):
@@ -271,6 +272,7 @@ class Rule(object):
             raise ValueError("rule must be string")
         self.rule = str(rule)
         self.name = name
+        self.token_type = token_type
         self.tokens = split_rule(rule, split_characters)
         self.number_of_tokens = len(self.tokens)
         self.grammar = Grammar(DEFAULT_RULE_GRAMMAR)
@@ -284,7 +286,7 @@ class Rule(object):
         return self.tree_walker.matches(tokens)
 
     def __repr__(self):
-        name_text = "{}(name:{})".format(self.__class__.__name__, self.name)
+        name_text = "{}(name:{}, token_type:{})".format(self.__class__.__name__, self.name, self.token_type)
         rule_text = "{}".format(self.rule)
         n = max(len(name_text), len(rule_text))
         pad = 4
@@ -303,6 +305,7 @@ class Definition(object):
         self,
         definition:str,
         name:str=None,
+        token_type:str=None,
         split_characters: set = {"+","-",",","(",")", " "},
         rule_grammar:str=DEFAULT_RULE_GRAMMAR,
     ):
@@ -336,7 +339,7 @@ class Definition(object):
         return self.rules
 
     def __repr__(self):
-        name_text = "{}(name:{})".format(self.__class__.__name__, self.name)
+        name_text = "{}(name:{}, token_type:{})".format(self.__class__.__name__, self.name, self.token_type)
         n = len(name_text)
         pad = 4
         fields = [
