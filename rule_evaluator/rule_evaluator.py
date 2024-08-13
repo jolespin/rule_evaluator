@@ -317,7 +317,7 @@ class Definition(object):
         self.number_of_elements = len(self.elements)
         self.rules = list()
         for i,rule in enumerate(find_rules(definition)):
-            rule = Rule(rule=rule, name=i, split_characters=split_characters, rule_grammar=rule_grammar)
+            rule = Rule(rule=rule, name=i, split_characters=split_characters, rule_grammar=rule_grammar, element_type=self.element_type)
             self.rules.append(rule)
         self.number_of_rules = len(self.rules)
         

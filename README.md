@@ -34,8 +34,8 @@ rules = [
     'R00342,R00361'# True
 ]
 
-# List of tokens to query
-tokens = {
+# List of elements to query
+elements = {
     # "R00351", 
     # "R01325",
     # 'R01900',
@@ -62,7 +62,7 @@ tokens = {
 
 rule_to_bool = OrderedDict()
 for rule in rules:
-    rule_to_bool[rule] = rl.Rule(rule).evaluate(tokens)
+    rule_to_bool[rule] = rl.Rule(rule).evaluate(elements)
 rule_to_bool
 # OrderedDict([('R00351', False),
 #              ('R01325+R01900,R01324', True),
@@ -87,8 +87,8 @@ import rule_evaluator as rl
 name="M00357"
 definition = '((K00925 K00625),K01895) (K00193+K00197+K00194) (K00577+K00578+K00579+K00580+K00581-K00582-K00583+K00584) (K00399+K00401+K00402) (K22480+K22481+K22482,K03388+K03389+K03390,K08264+K08265,K03388+K03389+K03390+K14127+(K14126+K14128,K22516+K00125))'
 
-# List of items to check against
-tokens = {
+# List of elements to check against
+elements = {
     'K00925',
     # 'K00625',
     # 'K01895',
@@ -121,15 +121,15 @@ tokens = {
 }
 
 # Define
-d = rl.Definition(definition, name=name)
+d = rl.Definition(definition, name=name, element_type="ko")
 
 # View Defintion
 d
-# =====================
-# Definition(name:M00357)
-# =====================
+# ========================================
+# Definition(name:M00357, element_type:ko)
+# ========================================
 # Properties:
-#     - number_of_tokens: 30
+#     - number_of_elements: 30
 #     - number_of_rules: 5
 # Rules:
 #     - 0: ((K00925 K00625),K01895)
@@ -141,16 +141,16 @@ d
 # View Rule
 d.rules[2]
 # =========================================================
-# Rule(name:2)
+# Rule(name:2, element_type:ko)
 # =========================================================
 # (K00577+K00578+K00579+K00580+K00581-K00582-K00583+K00584)
 # _________________________________________________________
 # Properties:
-#     - number_of_tokens: 8
+#     - number_of_elements: 8
 
 
 # Evaluate
-d.evaluate(tokens)
+d.evaluate(elements)
 # OrderedDict([('((K00925 K00625),K01895)', False),
 #              ('(K00193+K00197+K00194)', True),
 #              ('(K00577+K00578+K00579+K00580+K00581-K00582-K00583+K00584)',
@@ -160,7 +160,7 @@ d.evaluate(tokens)
 #               False)])
 
 # Score
-d.evaluate(tokens, score=True)
+d.evaluate(elements, score=True)
 # 0.6 
 ```
 
