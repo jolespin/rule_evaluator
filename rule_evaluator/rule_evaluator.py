@@ -15,14 +15,14 @@ def format_header(text, line_character="=", n=None):
 # Split rules into
 def split_rule(rule: str, split_characters: set = {"+","-",",","(",")", " "}) -> set:
     """
-    Split rule by tokens.
+    Split rule by elements.
 
     Args:
         rule (str): Boolean logical string.
         split_characters (list): List of characters to split in rule.
 
     Returns:
-        set: Unique tokens in a rule.
+        set: Unique elements in a rule.
     """
     if not isinstance(rule, str):
         raise ValueError("rule must be a string type")
@@ -32,8 +32,8 @@ def split_rule(rule: str, split_characters: set = {"+","-",",","(",")", " "}) ->
             character = character.strip()
             if character:
                 rule_decomposed = rule_decomposed.replace(character, " ")
-    unique_tokens = set(filter(bool, rule_decomposed.split()))
-    return unique_tokens
+    unique_elements = set(filter(bool, rule_decomposed.split()))
+    return unique_elements
 
 # Find rules in a definition
 def find_rules(definition: str) -> list:
@@ -189,7 +189,7 @@ class Visitor(NodeVisitor):
         return children
 
     def visit_rule(self, node, visited_children):
-        # Strip out the " " rule operator child token
+        # Strip out the " " rule operator child element
 
         return visited_children[1]
 
@@ -202,7 +202,7 @@ class Visitor(NodeVisitor):
         return children
 
     def visit_or(self, node, visited_children):
-        # Strip out the "," or operator child token
+        # Strip out the "," or operator child element
 
         return visited_children[1]
 
@@ -215,7 +215,7 @@ class Visitor(NodeVisitor):
         return children
 
     def visit_and(self, node, visited_children):
-        # Strip out the operator child token, and
+        # Strip out the operator child element, and
         # handle the case where we ignore values.
 
         if visited_children[0] == "-":
@@ -264,7 +264,7 @@ class Rule(object):
         self,
         rule:str,
         name:str=None,
-        token_type:str=None,
+        element_type:str=None,
         split_characters: set = {"+","-",",","(",")", " "},
         rule_grammar:str=DEFAULT_RULE_GRAMMAR,
     ):
@@ -272,21 +272,21 @@ class Rule(object):
             raise ValueError("rule must be string")
         self.rule = str(rule)
         self.name = name
-        self.token_type = token_type
-        self.tokens = split_rule(rule, split_characters)
-        self.number_of_tokens = len(self.tokens)
+        self.element_type = element_type
+        self.elements = split_rule(rule, split_characters)
+        self.number_of_elements = len(self.elements)
         self.grammar = Grammar(DEFAULT_RULE_GRAMMAR)
         self.tree = self.grammar.parse(rule)
         self.tree_walker = Visitor().visit(self.tree)
 
-    def get_tokens(self):
-        return self.tokens
+    def get_elements(self):
+        return self.elements
     
-    def evaluate(self, tokens:set) -> bool:
-        return self.tree_walker.matches(tokens)
+    def evaluate(self, elements:set) -> bool:
+        return self.tree_walker.matches(elements)
 
     def __repr__(self):
-        name_text = "{}(name:{}, token_type:{})".format(self.__class__.__name__, self.name, self.token_type)
+        name_text = "{}(name:{}, element_type:{})".format(self.__class__.__name__, self.name, self.element_type)
         rule_text = "{}".format(self.rule)
         n = max(len(name_text), len(rule_text))
         pad = 4
@@ -294,18 +294,16 @@ class Rule(object):
             format_header(name_text,line_character="=", n=n),
             *format_header(rule_text, line_character="_", n=n).split("\n")[1:],
             "Properties:",
-            pad*" " + "- number_of_tokens: {}".format(self.number_of_tokens),
+            pad*" " + "- number_of_elements: {}".format(self.number_of_elements),
         ]
         return "\n".join(fields)
-    
-    
     
 class Definition(object):
     def __init__(
         self,
         definition:str,
         name:str=None,
-        token_type:str=None,
+        element_type:str=None,
         split_characters: set = {"+","-",",","(",")", " "},
         rule_grammar:str=DEFAULT_RULE_GRAMMAR,
     ):
@@ -314,38 +312,39 @@ class Definition(object):
         self.definition = str(definition)
         self.split_characters = split_characters
         self.name = name
-        self.tokens = split_rule(definition, split_characters) #set.union(*map(lambda rule: split_rule(rule, self.replace.keys()), find_rules(definition)))
-        self.number_of_tokens = len(self.tokens)
+        self.element_type = element_type
+        self.elements = split_rule(definition, split_characters) #set.union(*map(lambda rule: split_rule(rule, self.replace.keys()), find_rules(definition)))
+        self.number_of_elements = len(self.elements)
         self.rules = list()
         for i,rule in enumerate(find_rules(definition)):
             rule = Rule(rule=rule, name=i, split_characters=split_characters, rule_grammar=rule_grammar)
             self.rules.append(rule)
         self.number_of_rules = len(self.rules)
         
-    def evaluate(self, tokens:set, score:bool=False) -> dict:
-        rule_to_bool = dict() #evaluate_definition(self.definition, tokens=tokens, replace=self.replace)
+    def evaluate(self, elements:set, score:bool=False) -> dict:
+        rule_to_bool = dict() #evaluate_definition(self.definition, elements=elements, replace=self.replace)
         for rule in self.rules:
-            rule_to_bool[rule.rule] = rule.evaluate(tokens)
+            rule_to_bool[rule.rule] = rule.evaluate(elements)
         if score:
             values = rule_to_bool.values()
             return sum(values)/len(values)
         else:
             return rule_to_bool
             
-    def get_tokens(self):
-        return self.tokens
+    def get_elements(self):
+        return self.elements
 
     def get_rules(self):
         return self.rules
 
     def __repr__(self):
-        name_text = "{}(name:{}, token_type:{})".format(self.__class__.__name__, self.name, self.token_type)
+        name_text = "{}(name:{}, element_type:{})".format(self.__class__.__name__, self.name, self.element_type)
         n = len(name_text)
         pad = 4
         fields = [
             format_header(name_text,line_character="=", n=n),        
             "Properties:",
-            pad*" " + "- number_of_tokens: {}".format(self.number_of_tokens),
+            pad*" " + "- number_of_elements: {}".format(self.number_of_elements),
             pad*" " + "- number_of_rules: {}".format(self.number_of_rules),
             "Rules:",
             ]
