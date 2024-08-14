@@ -352,3 +352,58 @@ class Definition(object):
             rule_text = pad*" " + "- {}: {}".format(rule.name, rule.rule)
             fields.append(rule_text)
         return "\n".join(fields)
+    
+# Chemistry
+def split_reaction_equation(
+    equation:str, 
+    stoichiometric_coefficient:bool=True, 
+    sep_left_right:str=" <=> ", 
+    compound_splitter:str=" + ",
+    ) -> tuple:
+    """Split reaction equations with or without stoichiometric coefficients
+
+    Args:
+        equation (str): Reaction equation
+            With stoichiometric coefficients:
+                3 C00083 + 5 C02557 + 7 C00005 + 7 C00080 <=> C15685 + 8 C00010 + 8 C00011 + 4 C00001 + 7 C00006)
+            or without stoichiometric coefficients:
+                C00002 + 5 C00065 <=> C00008 + C01005
+        stoichiometric_coefficient (bool, optional): Output includes stoichiometric coefficients. Defaults to True.
+        sep_left_right (str, optional): Separator between left and right reactions. Defaults to " <=> ".
+        compound_splitter (str, optional): Split compounds in each half-reaction. Defaults to " + ".
+        
+    Returns:
+        Tuple (left_reactions, right_reactions)
+    """
+    def _format_compounds(half_reaction_equation:str, compound_splitter):
+        compounds = list()
+        for cpd in half_reaction_equation.split(compound_splitter):
+            cpd = cpd.strip()
+            if " " in cpd:
+                if not cpd[0].isdigit():
+                    raise ValueError(
+                        f"Could not parse '{cpd}'.  \
+                        If cpd contains whitespace then it is assumed to start with a digit \
+                        (i.e., stoichiometric coefficient)")
+                x, id_cpd = cpd.split(" ")
+                x = int(x)
+            else:
+                x = 1
+                id_cpd = cpd
+            compounds.append((id_cpd,x))
+        return compounds
+    # Check equation        
+    number_of_seperators = equation.count(sep_left_right)
+    if number_of_seperators != 1:
+        raise IndexError(f"equation should have 1 and only 1 separator: {sep_left_right}")
+    left, right = equation.strip().split(sep_left_right)
+    # Format left compounds
+    left_compounds = _format_compounds(left, compound_splitter=compound_splitter)
+    # Format right compounds
+    right_compounds = _format_compounds(right, compound_splitter=compound_splitter)
+
+    if not stoichiometric_coefficient:
+        left_compounds = list(map(lambda x: x[0], left_compounds))
+        right_compounds = list(map(lambda x: x[0], right_compounds))
+    
+    return left_compounds, right_compounds
